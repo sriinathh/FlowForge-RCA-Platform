@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'flowforge-backend'
+    metrics_path: '/api/telemetry/metrics/'
+    static_configs:
+      - targets: ['backend:8000']
+
+  - job_name: 'demo-api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8001']
+
+  - job_name: 'demo-user-service'
+    static_configs:
+      - targets: ['user-service:8002']
+
+  - job_name: 'demo-order-service'
+    static_configs:
+      - targets: ['order-service:8003']
+
+  - job_name: 'demo-payment-service'
+    static_configs:
+      - targets: ['payment-service:8004']

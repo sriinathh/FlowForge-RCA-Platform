@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # FlowForge Core Backend & RCA Engine
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flowforge-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=flowforge-insecure-production-ready-key-7890
+    volumes:
+      - ./backend:/app
+    command: python manage.py runserver 0.0.0.0:8000
+    restart: unless-stopped
+
+  # FlowForge Interactive React Dashboard
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: flowforge-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:8000
+    restart: unless-stopped
+
+  # Demo Microservices
+  api-gateway:
+    build:
+      context: ./demo-services
+      dockerfile: Dockerfile
+    container_name: demo-api-gateway
+    ports:
+      - "8001:8001"
+    environment:
+      - ORDER_SERVICE_URL=http://order-service:8003
+      - USER_SERVICE_URL=http://user-service:8002
+      - FLOWFORGE_INGEST_URL=http://backend:8000/api/telemetry/ingest/
+    command: uvicorn api-gateway.main:app --host 0.0.0.0 --port 8001
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: ./demo-services
+      dockerfile: Dockerfile
+    container_name: demo-user-service
+    ports:
+      - "8002:8002"
+    environment:
+      - FLOWFORGE_INGEST_URL=http://backend:8000/api/telemetry/ingest/
+    command: uvicorn user-service.main:app --host 0.0.0.0 --port 8002
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  order-service:
+    build:
+      context: ./demo-services
+      dockerfile: Dockerfile
+    container_name: demo-order-service
+    ports:
+      - "8003:8003"
+    environment:
+      - USER_SERVICE_URL=http://user-service:8002
+      - PAYMENT_SERVICE_URL=http://payment-service:8004
+      - FLOWFORGE_INGEST_URL=http://backend:8000/api/telemetry/ingest/
+    command: uvicorn order-service.main:app --host 0.0.0.0 --port 8003
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  payment-service:
+    build:
+      context: ./demo-services
+      dockerfile: Dockerfile
+    container_name: demo-payment-service
+    ports:
+      - "8004:8004"
+    environment:
+      - FLOWFORGE_INGEST_URL=http://backend:8000/api/telemetry/ingest/
+    command: uvicorn payment-service.main:app --host 0.0.0.0 --port 8004
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Observability Layer
+  otel-collector:
+    image: otel/opentelemetry-collector:0.95.0
+    container_name: flowforge-otel-collector
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otel-collector.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: flowforge-prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
